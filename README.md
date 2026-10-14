@@ -13,7 +13,7 @@
 
 一个自包含的 Python 脚本（纯标准库，零依赖），每天自动帮你完成微博超话签到和评论互动。只读取你自己抓的登录 Cookie，零内置密钥，不碰账号密码，可安全分享。
 
-👤 作者：[茉灵智库 · 88lin｜AI Agent 开发、自动化与网站定制](https://dev.88lin.eu.org/) · 📦 [github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
+👤 作者：[茉灵智库 · 88lin](https://dev.88lin.eu.org/) · 📦 [github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
 
 </div>
 
