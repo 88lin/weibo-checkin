@@ -1,0 +1,5 @@
+# 真实配置含 Cookie，绝不提交
+config.json
+log.txt
+cron.log
+__pycache__/
