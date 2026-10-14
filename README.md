@@ -79,13 +79,44 @@ crontab -e
 30 9 * * * cd /path/to/weibo-checkin && /usr/bin/python3 weibo_checkin.py silent >> cron.log 2>&1
 ```
 
+### macOS · launchd（推荐，比 cron 更 macOS）
+
+cron 在 macOS 上是二等公民（合盖休眠会直接错过、不补跑；新版系统还会弹"完全磁盘访问"授权坑）。推荐用 launchd：
+
+```shell
+# 1. 复制示例配置并改两处路径（文件顶部注释有说明）
+cp com.weibo.checkin.plist.example ~/Library/LaunchAgents/com.weibo.checkin.plist
+open -e ~/Library/LaunchAgents/com.weibo.checkin.plist
+
+# 2. 加载并验证
+launchctl load ~/Library/LaunchAgents/com.weibo.checkin.plist
+launchctl list | grep weibo   # 有输出即装好
+```
+
+特点：**合盖/关机错过的任务，开机登录后自动补跑**（配合脚本自身的幂等设计，补跑只会返回"今日已签"，不会重复签到）。
+
 ### Windows · 任务计划程序
 
 创建基本任务 → 每天 9:30 → 启动程序：
 
-- 程序：`python.exe`（或 `pythonw.exe` 静默）
+- 程序：`pythonw.exe`（**静默关键**：无窗口；用 `python.exe` 会每天弹黑框）
 - 参数：`weibo_checkin.py silent`
-- 起始于：脚本所在目录
+- 起始于：脚本所在目录（**必须填**，否则找不到 config.json）
+
+> [!TIP]
+> 想要"错过后开机补跑"：任务属性 → 设置 → 勾选 **"错过后尽快启动任务"**（默认最多延迟补跑 1 小时内）。配合脚本幂等，补跑安全。
+
+## 🏠 关于在哪台机器跑
+
+**推荐跑在每天使用的电脑上，而不是云服务器 / GitHub Actions**：
+
+| | 家用电脑（推荐） | 云服务器 / Actions |
+|---|---|---|
+| IP 类型 | 住宅 IP，微博风控宽容 | 数据中心 IP，高危名单，易触发验证码/风控 |
+| 稳定性 | 每天开机就在 | Actions 定时经常延迟 10~40 分钟 |
+| 凭据安全 | Cookie 只在你自己机器 | 需要上传到第三方 Secrets |
+
+本脚本有意**不做** GitHub Actions 模式，就是这个原因。
 
 ## 📖 全部命令
 

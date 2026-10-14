@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- macOS launchd 定时任务示例。
+         安装：复制到 ~/Library/LaunchAgents/com.weibo.checkin.plist 后执行
+         launchctl load ~/Library/LaunchAgents/com.weibo.checkin.plist
+         查看状态：launchctl list | grep weibo
+         卸载：launchctl unload ~/Library/LaunchAgents/com.weibo.checkin.plist
+
+         ⚠️ 把下面两处路径改成你的实际值：
+         1. ProgramArguments 第2项：python3 的绝对路径（终端里 which python3 查看，
+            Homebrew 装的通常是 /opt/homebrew/bin/python3，系统自带是 /usr/bin/python3）
+         2. WorkingDirectory / StandardOutPath / StandardErrorPath：脚本目录 -->
+    <key>Label</key>
+    <string>com.weibo.checkin</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>weibo_checkin.py</string>
+        <string>silent</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/你的用户名/weibo-checkin</string>
+    <!-- 每天 09:30 触发；脚本内部还会再随机抖动 0~20 分钟 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <!-- 错过触发（合盖/关机）后开机自动补跑一次 -->
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/你的用户名/weibo-checkin/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/你的用户名/weibo-checkin/launchd.log</string>
+</dict>
+</plist>
