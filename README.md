@@ -6,10 +6,10 @@
 
 **微博超话每日自动签到 + 评论的小脚本**
 
-[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-e94560)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-4e8cff)]()
-[![Stars](https://img.shields.io/github/stars/88lin/weibo-checkin?style=flat&logo=github&color=ff9f43)](https://github.com/88lin/weibo-checkin/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-8B5CF6?style=flat&logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Win%20%7C%20macOS%20%7C%20Linux-F43F5E?style=flat&logo=windows&logoColor=white)]()
+[![Stars](https://img.shields.io/github/stars/88lin/weibo-checkin?style=flat&logo=github&logoColor=white&color=F59E0B)](https://github.com/88lin/weibo-checkin/stargazers)
+[![Author](https://img.shields.io/badge/Author-88lin-10B981?style=flat&logo=github&logoColor=white)](https://github.com/88lin)
 
 一个自包含的 Python 脚本（纯标准库，零依赖），每天自动帮你完成微博超话签到和评论互动。只读取你自己抓的登录 Cookie，零内置密钥，不碰账号密码，可安全分享。
 
