@@ -2,7 +2,7 @@
 
 <img src="assets/cover.svg" alt="weibo-checkin" width="880"/>
 
-# weibo-checkin
+# 🐦 weibo-checkin
 
 **微博超话每日自动签到 + 评论的小脚本**
 
