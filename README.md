@@ -1,4 +1,4 @@
-# 🐴 weibo-checkin
+# weibo-checkin
 
 **微博超话每日自动签到 + 评论的小脚本**
 
@@ -6,8 +6,7 @@
 >
 > 👤 作者：[88lin](https://github.com/88lin) · 📦 仓库：[github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
 
-Tip
-
+> [!TIP]
 > 超话接口系从网页版逆向所得，服务端改一版就可能失效——修复都会推到本仓库。顺手点个 ⭐ Star，等哪天签到莫名断了，你能一秒把它找回来。
 
 ## ✨ 功能
@@ -21,11 +20,32 @@ Tip
 - 📊 `status` 命令：最近 14 天成功率 + 全胜连签天数
 - 🧪 `--dry-run`：演练模式，走完整流程但不动真格
 
-## 🚀 快速开始
+## 🤖 AI 一键配置（推荐）
+
+把下面的提示词连同仓库链接直接发给你的 AI 助手（WorkBuddy / Hermes / Claude 等），它会自己 clone、填配置、装好定时任务：
+
+```text
+帮我部署微博超话自动签到脚本，要求：
+1. clone https://github.com/88lin/weibo-checkin.git 到本地
+   （网络慢或连不上时改用镜像前缀：git clone https://ghfast.top/https://github.com/88lin/weibo-checkin.git）
+2. 建好 config.json（参考 config.example.json），cookie 字段留空，超话和评论语料先按默认
+3. 跑 python3 weibo_checkin.py check 确认脚本能正常启动（会提示缺 Cookie，属正常）
+4. 按系统装好每日定时任务：
+   - Linux/macOS: crontab，每天 9:30，用 silent 模式
+   - Windows: 任务计划程序，每天 9:30，pythonw.exe + silent 模式
+5. 最后告诉我：还需要我手动做哪一步（只有一件事：把 Cookie 粘进 config.json）
+```
+
+> [!NOTE]
+> 整个流程只有 **Cookie 需要你手动提供**（登录 weibo.com → F12 → Network → 任意请求 → 复制请求头里的 `Cookie` 值）。AI 拿不到你的浏览器登录态，也不要把密码给任何工具。
+
+## 🚀 手动部署
 
 ```shell
 git clone https://github.com/88lin/weibo-checkin.git
 cd weibo-checkin
+# 国内网络慢或连不上时，用镜像前缀：
+# git clone https://ghfast.top/https://github.com/88lin/weibo-checkin.git
 cp config.example.json config.json
 ```
 
@@ -51,7 +71,7 @@ python3 weibo_checkin.py run
 
 ## ⏰ 每日定时
 
-### 🐧 Linux / macOS · crontab
+### Linux / macOS · crontab
 
 ```shell
 crontab -e
@@ -59,11 +79,11 @@ crontab -e
 30 9 * * * cd /path/to/weibo-checkin && /usr/bin/python3 weibo_checkin.py silent >> cron.log 2>&1
 ```
 
-### 🪟 Windows · 任务计划程序
+### Windows · 任务计划程序
 
 创建基本任务 → 每天 9:30 → 启动程序：
 
-- 程序：`python.exe`（或 pythonw.exe 静默）
+- 程序：`python.exe`（或 `pythonw.exe` 静默）
 - 参数：`weibo_checkin.py silent`
 - 起始于：脚本所在目录
 
@@ -71,7 +91,7 @@ crontab -e
 
 | 命令 | 干什么 |
 |---|---|
-| `run` | 签到 + 评论（默认，cron 用） |
+| `run` | 签到 + 评论（默认，定时任务用） |
 | `run --no-comment` | 只签到不评论 |
 | `run --dry-run` | 演练：全流程走一遍但不真正签到/评论 |
 | `silent` | 同 `run`，结果只写 `weibo.log`（配合 pythonw / cron 静默） |
@@ -105,7 +125,7 @@ crontab -e
 ## ⚠️ 注意
 
 - `config.json` 含登录凭证，已被 `.gitignore` 排除，**切勿手动提交或分享**
-- Cookie 有效期一般几周到几个月（脚本会告诉你确切日期），过期重抓一次即可
+- Cookie 有效期一般几周到几个月（`check` 命令会告诉你确切日期），过期重抓一次即可
 - 评论语料建议自己改写，避免和别人撞车
 - 仅供个人学习，请勿高频滥用（账号被限制概不负责）
 
