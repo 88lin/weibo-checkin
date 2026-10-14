@@ -319,7 +319,7 @@ def cmd_run(silent: bool = False, dry: bool = False, do_comment: bool | None = N
     if do_comment is None:
         do_comment = bool(CFG.get("comments"))
 
-    # 4) 随机顺序处理各超话，失败隔离
+    # 4) 随机顺序处理各超话，失败隔离（任何单超话的异常不中断整体）
     topics = list(CFG.get("supertopics") or [])
     random.shuffle(topics)
     summary, failures = [], 0
@@ -330,31 +330,36 @@ def cmd_run(silent: bool = False, dry: bool = False, do_comment: bool | None = N
         if idx:
             sleep_jitter(random.uniform(d_min, d_max))
         log(f"▶ 超话「{name}」")
-        cid = find_topic(name)
-        if not cid:
-            summary.append(f"{name}: 未解析到超话")
-            failures += 1
-            continue
-        sline = checkin(cid, dry)
-        log(f"  {sline}")
-        if "失败" in sline:
-            failures += 1
+        try:
+            cid = find_topic(name)
+            if not cid:
+                summary.append(f"{name}: 未解析到超话")
+                failures += 1
+                continue
+            sline = checkin(cid, dry)
+            log(f"  {sline}")
+            if "失败" in sline:
+                failures += 1
 
-        cline = ""
-        if do_comment:
-            sleep_jitter(random.uniform(max(d_min, 3), max(d_max, 8)))
-            post = latest_post(cid)
-            if post:
-                mid, preview = post
-                log(f"  最新帖: {preview}…")
-                text = random.choice(CFG["comments"])
-                cline = comment(mid, text, dry)
-                log(f"  {cline}")
-                if "失败" in cline:
-                    failures += 1
-            else:
-                log("  未取到最新帖，跳过评论")
-        summary.append(f"{name}: {sline.split('（')[0]}{'；' + cline.split('（')[0] if cline else ''}")
+            cline = ""
+            if do_comment and CFG.get("comments"):
+                sleep_jitter(random.uniform(max(d_min, 3), max(d_max, 8)))
+                post = latest_post(cid)
+                if post:
+                    mid, preview = post
+                    log(f"  最新帖: {preview}…")
+                    text = random.choice(CFG["comments"])
+                    cline = comment(mid, text, dry)
+                    log(f"  {cline}")
+                    if "失败" in cline:
+                        failures += 1
+                else:
+                    log("  未取到最新帖，跳过评论")
+            summary.append(f"{name}: {sline.split('（')[0]}{'；' + cline.split('（')[0] if cline else ''}")
+        except Exception as e:   # 网络崩/解析崩都算这个超话失败，继续下一个
+            failures += 1
+            summary.append(f"{name}: 异常 {type(e).__name__}: {str(e)[:80]}")
+            log(f"  ✗ 异常: {str(e)[:120]}")
 
     ok = len(topics) - failures
     log(f"＝ 完成 {ok}/{len(topics)}，失败 {failures}")
