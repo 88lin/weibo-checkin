@@ -1,5 +1,5 @@
 {
-  "cookie": "在这里粘贴你登录 weibo.com 后的完整 Cookie",
+  "cookie": "在这里粘贴你登录 weibo.com 后的完整 Cookie（F12 → Network → 任意请求 → 复制请求头 Cookie 值）",
   "supertopics": ["数码"],
   "comments": [
     "打卡~",
@@ -7,5 +7,18 @@
     "来了来了，日常打卡",
     "今天也在，冒泡~",
     "坚持签到！"
-  ]
+  ],
+
+  "_说明_": "以下都是可选项，有默认值，不配也能跑",
+
+  "delay_min": 5,
+  "delay_max": 15,
+  "jitter_minutes": 20,
+  "retries": 3,
+  "retry_backoff": 4,
+
+  "notify": {
+    "enabled": false,
+    "url": ""
+  }
 }

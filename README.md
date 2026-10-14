@@ -1,19 +1,29 @@
-# weibo-checkin 🐴
+# 🐴 weibo-checkin
 
-微博超话每日自动签到 + 自动评论。纯 Python 标准库（零依赖），网页版接口，无需账号密码。
+**微博超话每日自动签到 + 评论的小脚本**
 
-## 工作原理
+> 一个自包含的 Python 脚本（纯标准库，零依赖），每天自动帮你完成微博超话签到和评论互动。只读取你自己抓的登录 Cookie，零内置密钥，不碰账号密码，可安全分享。
+>
+> 👤 作者：[88lin](https://github.com/88lin) · 📦 仓库：[github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
 
-1. 从 [s.weibo.com](https://s.weibo.com) 搜索结果里解析出超话的 containerid（`100808…`）
-2. 调用网页版签到接口 `POST /ajax_proxy/chaohua/page/checkin`
-3. 拉取超话最新帖子，随机选一条语料调用 `POST /ajax/comments/create` 发评论
-4. 请求间随机间隔 5~12 秒，降低风控风险
+Tip
 
-认证只靠 Cookie（含 `XSRF-TOKEN`，会自动作为 `X-Xsrf-Token` 头回传）。
+> 超话接口系从网页版逆向所得，服务端改一版就可能失效——修复都会推到本仓库。顺手点个 ⭐ Star，等哪天签到莫名断了，你能一秒把它找回来。
 
-## 使用
+## ✨ 功能
 
-```bash
+- ✅ 超话**每日签到**（支持多个超话，自动从搜索解析超话 ID）
+- 💬 超话内**自动评论**（语料池随机抽取，不撞车）
+- 🛡️ **防风控**：启动时间抖动（错开整点）、随机请求间隔、随机超话顺序、指数退避重试
+- 🩺 **Cookie 体检**：自动解析过期时间，提前 7 天告警，失效立刻通知而不是每天空跑
+- 🔕 **失败隔离**：单个超话出问题不影响其他超话
+- 📣 **Webhook 通知**：Server酱 / Bark / 企业微信机器人，配个 URL 就行
+- 📊 `status` 命令：最近 14 天成功率 + 全胜连签天数
+- 🧪 `--dry-run`：演练模式，走完整流程但不动真格
+
+## 🚀 快速开始
+
+```shell
 git clone https://github.com/88lin/weibo-checkin.git
 cd weibo-checkin
 cp config.example.json config.json
@@ -21,29 +31,81 @@ cp config.example.json config.json
 
 编辑 `config.json`：
 
-- `cookie`：浏览器登录 weibo.com 后，F12 → Network → 任意请求 → 复制请求头里的完整 `Cookie` 值
-- `supertopics`：要签到的超话名列表，如 `["数码", "小米"]`
-- `comments`：评论语料池，每次随机抽一条；留空 `[]` 则只签到不评论
+| 字段 | 说明 |
+|---|---|
+| `cookie` | 浏览器登录 weibo.com → F12 → Network → 任意请求 → 复制请求头里的完整 `Cookie` 值 |
+| `supertopics` | 要签到的超话名列表，如 `["数码", "小米"]` |
+| `comments` | 评论语料池（每次随机抽一条）；留空 `[]` 则只签到不评论 |
 
-运行：
+先体检一次（只读，不写操作）：
 
-```bash
-python3 weibo_checkin.py run               # 签到 + 评论
-python3 weibo_checkin.py run --no-comment  # 只签到
+```shell
+python3 weibo_checkin.py check
 ```
 
-## 定时任务（crontab）
+看到 `✓ 有效` 和各超话 ID 就能正式跑了：
 
-每天 9:30 自动执行：
-
-```
-30 9 * * * cd /path/to/weibo-checkin && /usr/bin/python3 weibo_checkin.py run >> cron.log 2>&1
+```shell
+python3 weibo_checkin.py run
 ```
 
-## 注意
+## ⏰ 每日定时
 
-- ⚠️ `config.json` 含登录凭证，已在 `.gitignore` 中排除，**切勿手动提交或分享**
-- Cookie 有效期通常数周~数月，过期后日志会出现"签到失败"，重新抓一次即可
+### 🐧 Linux / macOS · crontab
+
+```shell
+crontab -e
+# 每天 9:30（脚本内部还会再随机抖动 0~20 分钟）
+30 9 * * * cd /path/to/weibo-checkin && /usr/bin/python3 weibo_checkin.py silent >> cron.log 2>&1
+```
+
+### 🪟 Windows · 任务计划程序
+
+创建基本任务 → 每天 9:30 → 启动程序：
+
+- 程序：`python.exe`（或 pythonw.exe 静默）
+- 参数：`weibo_checkin.py silent`
+- 起始于：脚本所在目录
+
+## 📖 全部命令
+
+| 命令 | 干什么 |
+|---|---|
+| `run` | 签到 + 评论（默认，cron 用） |
+| `run --no-comment` | 只签到不评论 |
+| `run --dry-run` | 演练：全流程走一遍但不真正签到/评论 |
+| `silent` | 同 `run`，结果只写 `weibo.log`（配合 pythonw / cron 静默） |
+| `check` | 体检：Cookie 有效期 + 登录态 + 超话解析预览，零写操作 |
+| `status` | 最近 14 天成功率 + 全胜连签天数 |
+
+## 📣 通知（可选）
+
+`config.json` 里：
+
+```json
+"notify": {
+  "enabled": true,
+  "url": "https://sctapi.ftqq.com/你的KEY.send"
+}
+```
+
+任何形式的 **POST JSON `{"title": ..., "desp"/"content": ...}`** 都兼容：Server酱、Bark（`https://api.day.app/你的KEY`）、企业微信机器人 webhook 等。只在**失败或 Cookie 快过期**时推送，成功不打扰。
+
+## 🛡️ 防风控设计
+
+| 措施 | 说明 |
+|---|---|
+| 启动抖动 | 每次运行先随机睡 0~20 分钟，避免每天同一秒打点（`jitter_minutes` 可调） |
+| 随机间隔 | 每个请求之间随机睡 5~15 秒（`delay_min/delay_max` 可调） |
+| 随机顺序 | 多个超话每次打乱顺序处理 |
+| 指数退避 | 网络错误自动重试 3 次（4s → 16s → 64s） |
+| X-Xsrf-Token | 自动从 Cookie 提取并回传，微博网页版的防 CSRF 机制，缺了评论必 403 |
+| 失败隔离 | 单个超话解析/签到失败不影响其他超话 |
+
+## ⚠️ 注意
+
+- `config.json` 含登录凭证，已被 `.gitignore` 排除，**切勿手动提交或分享**
+- Cookie 有效期一般几周到几个月（脚本会告诉你确切日期），过期重抓一次即可
 - 评论语料建议自己改写，避免和别人撞车
 - 仅供个人学习，请勿高频滥用（账号被限制概不负责）
 

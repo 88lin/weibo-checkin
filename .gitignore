@@ -3,3 +3,4 @@ config.json
 log.txt
 cron.log
 __pycache__/
+weibo.log
