@@ -1,10 +1,21 @@
+<div align="center">
+
+<img src="assets/cover.svg" alt="weibo-checkin" width="880"/>
+
 # weibo-checkin
 
 **微博超话每日自动签到 + 评论的小脚本**
 
-> 一个自包含的 Python 脚本（纯标准库，零依赖），每天自动帮你完成微博超话签到和评论互动。只读取你自己抓的登录 Cookie，零内置密钥，不碰账号密码，可安全分享。
->
-> 👤 作者：[88lin](https://github.com/88lin) · 📦 仓库：[github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
+[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-e94560)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-4e8cff)]()
+[![Stars](https://img.shields.io/github/stars/88lin/weibo-checkin?style=flat&logo=github&color=ff9f43)](https://github.com/88lin/weibo-checkin/stargazers)
+
+一个自包含的 Python 脚本（纯标准库，零依赖），每天自动帮你完成微博超话签到和评论互动。只读取你自己抓的登录 Cookie，零内置密钥，不碰账号密码，可安全分享。
+
+👤 作者：[88lin](https://github.com/88lin) · 📦 [github.com/88lin/weibo-checkin](https://github.com/88lin/weibo-checkin)
+
+</div>
 
 > [!TIP]
 > 超话接口系从网页版逆向所得，服务端改一版就可能失效——修复都会推到本仓库。顺手点个 ⭐ Star，等哪天签到莫名断了，你能一秒把它找回来。
