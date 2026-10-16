@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/cover.svg" alt="weibo-checkin" width="880"/>
+<img src="assets/cover.jpg" alt="weibo-checkin" width="100%"/>
 
 # 🤖 weibo-checkin
 
