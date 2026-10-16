@@ -17,7 +17,12 @@
         其他 code   业务失败（403/缺参等）
   评论  POST https://weibo.com/ajax/comments/create
         body(form): id=<帖子mid> & comment=<内容> & pic_id= & is_repost=0 & comment_ori=0 & is_comment=0
-        成功        {"ok":1,"data":{...}}
+        主楼成功    {"ok":1,"data":{...}}
+        楼中楼     同上接口，另加 rootid=<目标评论cid> & uid=<帖主uid>
+        楼中楼成功  {"ok":1,"data":{"floor_number":N,...}}  ← N 为在目标楼内的楼层号
+  评论列表 GET https://weibo.com/ajax/statuses/buildComments?is_reload=1&id=<帖子mid>
+        &is_show_bulletin=3&is_mix=0&count=10&fetch_level=0&locale=en-US
+        返回 data[]: [{id:评论cid, text_raw, user:{id}, floor_number}]（楼中楼目标从这里取）
         失败        {"ok":0,"msg":"..."} 或 HTTP 403（缺 X-Xsrf-Token 时）
   超话解析  GET https://s.weibo.com/weibo?q=<名字>超话
         从 HTML 里 regex 100808[0-9a-f]{28,} 提取，按上下文文字匹配确认是目标超话
@@ -67,12 +72,16 @@ DEFAULT_CONFIG = {
     "cookie": "",
     "supertopics": [],
     "comments": [],
+    # ---- 评论模式（可选）----
+    "comment_count": 1,      # 每个超话发几条评论（1=主流楼1条；>1 会分布到不同楼层，防风控建议 ≤5）
+    "reply_mode": "new",     # new=主楼评论 | reply=楼中楼回复已有评论 | mixed=主楼+楼中楼混合
     # ---- 可选项（有默认值）----
     "delay_min": 5,          # 两次请求间随机间隔下限（秒）
     "delay_max": 15,         # 上限
     "jitter_minutes": 20,    # 启动前随机延迟 0~N 分钟（错开整点防指纹）；0 关闭
     "retries": 3,            # 网络错误重试次数
     "retry_backoff": 4,      # 重试退避基数（秒），指数：4s, 16s, 64s...
+    "burst_pause_chance": 0.15,  # 防风控：每次发评论有 N 概率额外"喝水"停顿（2~5s）
     "notify": {              # 通用 webhook（可选）：Server酱/Bark/企微机器人均可
         "enabled": False,
         "url": "",           # POST JSON: {"title": ..., "desp"/"content": ...}
@@ -233,8 +242,8 @@ def checkin(page_id: str, dry: bool = False) -> str:
     return f"签到失败 code={d.get('code')} {d.get('msg', '')}"
 
 
-def latest_post(page_id: str) -> tuple[str, str] | None:
-    """返回 (mid, 内容摘要)。取超话最新一条 feed 帖。"""
+def latest_post(page_id: str) -> tuple[str, str, str] | None:
+    """返回 (mid, 内容摘要, 帖主uid)。取超话最新一条 feed 帖。"""
     _, body = http(f"https://weibo.com/ajax_proxy/chaohua/page?flowId={page_id}")
     try:
         d = json.loads(body)
@@ -245,23 +254,52 @@ def latest_post(page_id: str) -> tuple[str, str] | None:
         mid = fd.get("mid") or fd.get("id")
         if mid and str(mid).isdigit() and len(str(mid)) >= 15:
             text = re.sub(r"\s+", " ", fd.get("text_raw") or fd.get("text") or "")[:40]
-            return str(mid), text
+            uid = str((fd.get("user") or {}).get("id") or "")
+            return str(mid), text, uid
     return None
 
 
-def comment(mid: str, text: str, dry: bool = False) -> str:
+def list_comments(mid: str, count: int = 20) -> list[dict]:
+    """拉帖子的评论列表（fetch_level=0 主楼）。返回 [{id, text_raw, user_id, floor}] 按接口顺序。"""
+    status, body = http(
+        "https://weibo.com/ajax/statuses/buildComments?is_reload=1"
+        f"&id={mid}&is_show_bulletin=3&is_mix=0&count={count}&fetch_level=0&locale=en-US")
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return []
+    out = []
+    for c in d.get("data") or []:
+        if c.get("id"):
+            out.append({
+                "id": str(c["id"]),
+                "text": (c.get("text_raw") or "")[:40],
+                "user_id": str((c.get("user") or {}).get("id") or ""),
+                "floor": c.get("floor_number") or 0,
+            })
+    return out
+
+
+def comment(mid: str, text: str, dry: bool = False, reply_to: str | None = None,
+            author_uid: str = "") -> str:
+    """发评论；reply_to 给目标评论 cid 时为楼中楼回复（rootid 指向它）。"""
     if dry:
-        return f"演练：将评论「{text}」（未执行）"
-    status, body = http("https://weibo.com/ajax/comments/create", data={
-        "id": mid, "comment": text, "pic_id": "",
-        "is_repost": "0", "comment_ori": "0", "is_comment": "0", "fp": "",
-    })
+        mode = f"楼中楼回复 {reply_to}" if reply_to else "主楼评论"
+        return f"演练：将{mode}「{text}」（未执行）"
+    payload = {"id": mid, "comment": text, "pic_id": "",
+               "is_repost": "0", "comment_ori": "0", "is_comment": "0", "fp": ""}
+    if reply_to:
+        payload["rootid"] = reply_to
+    if author_uid:
+        payload["uid"] = author_uid
+    status, body = http("https://weibo.com/ajax/comments/create", data=payload)
     try:
         d = json.loads(body)
     except ValueError:
         return f"评论响应异常 HTTP {status}: {body[:60]}"
     if d.get("ok") == 1:
-        return f"评论成功「{text}」"
+        where = f"楼中楼#{d.get('data', {}).get('floor_number', '?')}" if reply_to else "主楼"
+        return f"评论成功[{where}]「{text}」"
     return f"评论失败 ok={d.get('ok')} {str(d.get('msg', ''))[:60]}"
 
 
@@ -346,16 +384,40 @@ def cmd_run(silent: bool = False, dry: bool = False, do_comment: bool | None = N
                 sleep_jitter(random.uniform(max(d_min, 3), max(d_max, 8)))
                 post = latest_post(cid)
                 if post:
-                    mid, preview = post
+                    mid, preview, author_uid = post
                     log(f"  最新帖: {preview}…")
-                    text = random.choice(CFG["comments"])
-                    cline = comment(mid, text, dry)
-                    log(f"  {cline}")
-                    if "失败" in cline:
-                        failures += 1
+                    texts = random.sample(CFG["comments"],
+                                          min(len(CFG["comments"]), int(CFG.get("comment_count", 1))))
+                    mode = CFG.get("reply_mode", "new")
+                    # 楼中楼模式先拉评论列表（排除自己的评论，避免自己回自己）
+                    targets = None
+                    if mode in ("reply", "mixed") and not dry:
+                        targets = [c for c in list_comments(mid, 20)]
+                    results = []
+                    for i, text in enumerate(texts):
+                        reply_to = None
+                        if mode == "reply" or (mode == "mixed" and i % 2 == 1):
+                            if targets:
+                                # 随机挑一条目标评论做楼中楼（评论数比发帖数多时尽量不重复）
+                                t = random.choice(targets)
+                                targets.remove(t)
+                                reply_to = t["id"]
+                        rline = comment(mid, text, dry, reply_to=reply_to, author_uid=author_uid)
+                        log(f"  {rline}")
+                        results.append(rline)
+                        if "失败" in rline:
+                            failures += 1
+                        # 多条评论时逐条拉开间隔；小概率"喝水"停顿
+                        if i < len(texts) - 1:
+                            sleep_jitter(random.uniform(max(d_min, 8), max(d_max, 20)))
+                            if random.random() < float(CFG.get("burst_pause_chance", 0.15)):
+                                pause = random.uniform(2, 5)
+                                log(f"  … 随机喝水停顿 {pause:.0f}s")
+                                time.sleep(pause)
+                    cline = "；".join(r.split("（")[0] for r in results)
                 else:
                     log("  未取到最新帖，跳过评论")
-            summary.append(f"{name}: {sline.split('（')[0]}{'；' + cline.split('（')[0] if cline else ''}")
+            summary.append(f"{name}: {sline.split('（')[0]}{'；' + cline if cline else ''}")
         except Exception as e:   # 网络崩/解析崩都算这个超话失败，继续下一个
             failures += 1
             summary.append(f"{name}: 异常 {type(e).__name__}: {str(e)[:80]}")
