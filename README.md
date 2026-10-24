@@ -141,6 +141,9 @@ launchctl list | grep weibo   # 有输出即装好
 | `silent` | 同 `run`，结果只写 `weibo.log`（配合 pythonw / cron 静默） |
 | `check` | 体检：Cookie 有效期 + 登录态 + 超话解析预览，零写操作 |
 | `status` | 最近 14 天成功率 + 全胜连签天数 |
+| `topics` | 列出已配置的超话（含已缓存的超话 id） |
+| `topics 加 小米` | 添加超话，自动写回 config.json（不用手编 JSON） |
+| `topics 删 小米` | 移除超话 |
 
 ## 📣 通知（可选）
 
