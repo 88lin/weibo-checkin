@@ -43,8 +43,12 @@
   python weibo_checkin.py silent            # 同 run，结果写 weibo.log 不刷 stdout（静默运行）
   python weibo_checkin.py check             # 体检：Cookie 有效期 + 超话解析预览，不做任何写操作
   python weibo_checkin.py status            # 看最近 14 天成功率与全胜连签
+  python weibo_checkin.py topics            # 列出已配置的超话（含 id 缓存）
+  python weibo_checkin.py topics 加 小米    # 添加超话（写回 config.json）
+  python weibo_checkin.py topics 删 小米    # 移除超话
 
 配置：同目录 config.json（首次用 cp config.example.json config.json）
+状态：.state.json 缓存超话 id 与自己的 uid（可随时删，删后自动重建）
 通知：config.json 里配 webhook 可推 Server酱 / Bark / 企业微信机器人（可选）
 """
 from __future__ import annotations
@@ -65,6 +69,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / "config.json"
 LOG_PATH = BASE / "weibo.log"
+STATE_PATH = BASE / ".state.json"   # 运行时状态缓存（自己的 uid 等），可随时删
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
@@ -98,14 +103,41 @@ def load_config() -> dict:
     cfg.update(json.loads(CONFIG_PATH.read_text("utf-8")))
     if not cfg.get("cookie") or "粘贴" in cfg["cookie"]:
         sys.exit("config.json 里还没填有效 Cookie（浏览器登录 weibo.com 后 F12 复制）")
+    # 配置合法性校验：坏值早报错，不带到运行中
+    if cfg.get("reply_mode") not in ("new", "reply", "mixed"):
+        sys.exit(f"reply_mode 只能是 new/reply/mixed，当前: {cfg.get('reply_mode')!r}")
+    try:
+        n = int(cfg.get("comment_count", 1))
+        assert n >= 1
+        cfg["comment_count"] = n
+    except (TypeError, ValueError, AssertionError):
+        sys.exit("comment_count 必须是 ≥1 的整数")
+    if cfg.get("delay_min", 5) > cfg.get("delay_max", 15):
+        sys.exit("delay_min 不能大于 delay_max")
     return cfg
 
 
 CFG = load_config()
 
 
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_PATH.read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(st: dict):
+    STATE_PATH.write_text(json.dumps(st, ensure_ascii=False, indent=1), "utf-8")
+
+
+STATE = load_state()
+
+
 class Log:
-    """控制台 + 文件双写；绝不落 Cookie。silent 模式只写文件。"""
+    """控制台 + 文件双写；绝不落 Cookie。silent 模式只写文件。日志超 512KB 自动轮转。"""
+
+    MAX_BYTES = 512 * 1024
 
     def __init__(self, silent: bool):
         self.silent = silent
@@ -118,9 +150,18 @@ class Log:
             print(line, flush=True)
 
     def flush(self):
-        if self.lines:
-            with LOG_PATH.open("a", encoding="utf-8") as f:
-                f.write("\n".join(self.lines) + "\n")
+        if not self.lines:
+            return
+        try:
+            if LOG_PATH.exists() and LOG_PATH.stat().st_size > self.MAX_BYTES:
+                rot = LOG_PATH.with_suffix(".log.1")
+                if rot.exists():
+                    rot.unlink()
+                LOG_PATH.rename(rot)
+        except OSError:
+            pass
+        with LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write("\n".join(self.lines) + "\n")
 
 
 log = Log(False)
@@ -193,20 +234,38 @@ def cookie_expiry() -> datetime | None:
 
 
 def check_cookie() -> bool:
-    """真实调一个需登录的私有接口验证登录态。"""
+    """真实调一个需登录的私有接口验证登录态。失效形态：HTTP 200 + ok:-100 + login url。"""
     status, body = http("https://weibo.com/ajax/setting/getPrivacy")
     try:
-        return status == 200 and json.loads(body).get("data", {}).get("privacy") is not None
+        d = json.loads(body)
     except ValueError:
         return False
+    if status == 200 and d.get("ok") == -100:
+        return False   # 服务端已把会话踢掉（可能早于 ALF 过期）
+    return status == 200 and d.get("data", {}).get("privacy") is not None
 
 
 def find_topic(name: str) -> str | None:
-    """s.weibo.com 搜索解析超话 containerid；按上下文文字确认是目标超话。"""
+    """s.weibo.com 搜索解析超话 containerid；按上下文文字确认。
+    结果缓存到 .state.json（超话 id 基本不变），失效时自动重查一次。"""
+    cached = (STATE.get("topics") or {}).get(name)
+    if cached:
+        return cached
+    cid = _search_topic_once(name)
+    if cid:
+        STATE.setdefault("topics", {})[name] = cid
+        save_state(STATE)
+    return cid
+
+
+def _search_topic_once(name: str) -> str | None:
     q = urllib.parse.quote(f"{name}超话")
     status, body = http(f"https://s.weibo.com/weibo?q={q}", referer="https://s.weibo.com/")
     if status != 200:
         log(f"  搜索页 HTTP {status}，可能触发风控")
+        return None
+    if "login.sina.com.cn" in body or "retcode=6102" in body:
+        log("  搜索被重定向到登录页 → Cookie 已失效")
         return None
     ids = list(dict.fromkeys(re.findall(r"100808[0-9a-f]{28,}", body)))
     if not ids:
@@ -298,8 +357,15 @@ def comment(mid: str, text: str, dry: bool = False, reply_to: str | None = None,
     except ValueError:
         return f"评论响应异常 HTTP {status}: {body[:60]}"
     if d.get("ok") == 1:
+        # 首次评论成功后缓存自己的 uid（防自回复用）
+        my = str((d.get("data", {}).get("user") or {}).get("id") or "")
+        if my and STATE.get("my_uid") != my:
+            STATE["my_uid"] = my
+            save_state(STATE)
         where = f"楼中楼#{d.get('data', {}).get('floor_number', '?')}" if reply_to else "主楼"
         return f"评论成功[{where}]「{text}」"
+    if d.get("ok") == -100:
+        return "评论失败: 登录态失效（ok=-100），请更新 Cookie"
     return f"评论失败 ok={d.get('ok')} {str(d.get('msg', ''))[:60]}"
 
 
@@ -344,15 +410,14 @@ def cmd_run(silent: bool = False, dry: bool = False, do_comment: bool | None = N
         log(f"启动抖动 {wait / 60:.1f} 分钟…")
         time.sleep(wait)
 
-    # 3) 登录态确认
-    if not dry:
-        if not check_cookie():
-            log("✗ Cookie 登录态无效（接口返回未登录），请更新")
-            notify("weibo-checkin 失败", "Cookie 登录态无效")
-            log.flush()
-            return 2
-    else:
-        log("（dry-run：跳过登录态验证与写操作）")
+    # 3) 登录态确认（dry-run 也做——它是只读接口，无副作用；只跳过写操作）
+    if not check_cookie():
+        log("✗ Cookie 登录态无效（服务端已踢会话，可能早于 ALF 过期），请更新")
+        notify("weibo-checkin 失败", "Cookie 登录态无效（ok=-100），请重新抓 Cookie")
+        log.flush()
+        return 2
+    if dry:
+        log("（dry-run：登录态 ✓，写操作全部跳过）")
 
     if do_comment is None:
         do_comment = bool(CFG.get("comments"))
@@ -389,10 +454,14 @@ def cmd_run(silent: bool = False, dry: bool = False, do_comment: bool | None = N
                     texts = random.sample(CFG["comments"],
                                           min(len(CFG["comments"]), int(CFG.get("comment_count", 1))))
                     mode = CFG.get("reply_mode", "new")
-                    # 楼中楼模式先拉评论列表（排除自己的评论，避免自己回自己）
+                    # 楼中楼模式先拉评论列表，排除自己的评论（uid 缓存于 .state.json，首评后可用）
                     targets = None
                     if mode in ("reply", "mixed") and not dry:
-                        targets = [c for c in list_comments(mid, 20)]
+                        my_uid = STATE.get("my_uid", "")
+                        all_c = list_comments(mid, 20)
+                        targets = [c for c in all_c if not my_uid or c["user_id"] != my_uid]
+                        if not targets and all_c:
+                            log("  ⚠ 无法排除自己的评论（uid 未缓存），回退主楼评论")
                     results = []
                     for i, text in enumerate(texts):
                         reply_to = None
@@ -477,6 +546,42 @@ def cmd_status():
     print(f"全胜连签: {streak} 天")
 
 
+def cmd_topics():
+    """列出/管理超话：无参数列出当前配置；`topics 加 数码` 添加；`topics 删 数码` 移除。"""
+    import sys as _s
+    args = _s.argv[2:]
+    cfg_path = CONFIG_PATH
+    cfg = json.loads(cfg_path.read_text("utf-8"))
+    topics = cfg.get("supertopics") or []
+    if not args:
+        print(f"当前超话（{len(topics)} 个）：")
+        for t in topics:
+            cid = (STATE.get("topics") or {}).get(t, "（未缓存，运行时自动解析）")
+            print(f"  - {t}: {cid}")
+        return
+    op, name = args[0], " ".join(args[1:])
+    if op == "加" and name:
+        if name in topics:
+            print(f"「{name}」已在列表")
+            return
+        topics.append(name)
+        cfg["supertopics"] = topics
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+        print(f"✓ 已添加「{name}」并写回 config.json")
+    elif op == "删" and name:
+        if name not in topics:
+            print(f"「{name}」不在列表")
+            return
+        topics.remove(name)
+        cfg["supertopics"] = topics
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+        (STATE.get("topics") or {}).pop(name, None)
+        save_state(STATE)
+        print(f"✓ 已移除「{name}」")
+    else:
+        print("用法: topics          列出\n      topics 加 超话名  添加\n      topics 删 超话名  移除")
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[1] if len(argv) > 1 else "run"
     if cmd == "run":
@@ -488,6 +593,9 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd == "status":
         cmd_status()
+        return 0
+    if cmd == "topics":
+        cmd_topics()
         return 0
     print(__doc__)
     return 0
